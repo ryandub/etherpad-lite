@@ -38,7 +38,8 @@ end
 packages = [
   'curl',
   'python',
-  'libssl-dev'
+  'libssl-dev',
+  'git'
 ]
 
 case node[:platform]
@@ -74,7 +75,7 @@ script "install_etherpad-lite" do
   interpreter "bash"
   user "etherpad-lite"
   code <<-EOH
-  git clone "git://github.com/Pita/etherpad-lite.git" /usr/local/etherpad-lite
+  git clone "https://github.com/ether/etherpad-lite.git" /usr/local/etherpad-lite
   EOH
   #action :nothing
   notifies :run, "script[install_dependencies]"
@@ -110,42 +111,30 @@ node.set_unless[:etherpadlite][:database][:password] = secure_password
 
 mysql_connection_info = {:host => "localhost", :username => 'root', :password => node['mysql']['server_root_password']}
 
+# create etherpad-lite database
+mysql_database 'etherpadlite' do
+  connection mysql_connection_info
+  action :create
+  notifies :create, "template[/usr/local/etherpad-lite/settings.json]"
+end
 
-begin
-  gem_package "mysql" do
-    action :install
-  end
-  Gem.clear_paths  
-  require 'mysql'
-  m=Mysql.new("localhost","root",node['mysql']['server_root_password']) 
+# Grant etherpad-lite
+mysql_database_user 'etherpadlite' do
+  connection mysql_connection_info
+  password node[:etherpadlite][:database][:password]
+  database_name 'etherpadlite'
+  host node[:etherpadlite][:database][:host]
+  privileges ["ALL PRIVILEGES"]
+  action :grant
+end
 
-  if m.list_dbs.include?("etherpadlite") == false
-    # create etherpad-lite database
-    mysql_database 'etherpadlite' do
-      connection mysql_connection_info
-      action :create
-      notifies :create, "template[/usr/local/etherpad-lite/settings.json]"
-    end
-
-    # create etherpad-lite user
-    mysql_database_user 'etherpadlite' do
-      connection mysql_connection_info
-      password node[:etherpadlite][:database][:password]
-      action :create
-    end
-
-    # Grant etherpad-lite
-    mysql_database_user 'etherpadlite' do
-      connection mysql_connection_info
-      password node[:etherpadlite][:database][:password]
-      database_name 'etherpadlite'
-      host 'localhost'
-      privileges ["ALL PRIVILEGES"]
-      action :grant
-    end
-  end
-rescue LoadError
-  Chef::Log.info("Missing gem 'mysql'")
+mysql_database_user 'etherpadlite' do
+  connection mysql_connection_info
+  password node[:etherpadlite][:database][:password]
+  database_name 'etherpadlite'
+  host "127.0.0.1"
+  privileges ["ALL PRIVILEGES"]
+  action :grant
 end
 
 template "/usr/local/etherpad-lite/settings.json" do
@@ -182,6 +171,8 @@ service "etherpad-lite" do
   action [ :start, :enable ]
 end
 
+include_recipe "firewall"
+
 # nginx reverse proxy
 if node[:etherpadlite][:proxy][:enable]
 	include_recipe "nginx"
@@ -195,4 +186,15 @@ if node[:etherpadlite][:proxy][:enable]
       enable true
     end
 
+    firewall_rule "http" do
+      port 80
+      action :allow
+    end
+else
+  firewall_rule "etherpad" do
+    port node[:etherpadlite][:listen][:port]
+    action :allow
+  end
 end
+
+
