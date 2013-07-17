@@ -180,6 +180,10 @@ if node[:etherpadlite][:proxy][:enable]
       notifies :restart, "service[nginx]"
     end
 
+    nginx_site "default" do
+      enable false
+    end
+
     nginx_site "#{node.etherpadlite.proxy.hostname}" do
       enable true
     end
