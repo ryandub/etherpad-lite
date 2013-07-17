@@ -1,6 +1,7 @@
 server {
 	listen       80;
-	server_name <%= node.etherpadlite.proxy.hostname %> <%= node.etherpadlite.proxy.alias_hostnames.join(" ") %>;
+	# If necessary, set server name
+	# server_name <%= node.etherpadlite.proxy.hostname %> <%= node.etherpadlite.proxy.alias_hostnames.join(" ") %>;
 
 	access_log  off;
 	error_log   /var/log/etherpad-lite/error.log;
